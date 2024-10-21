@@ -4,8 +4,10 @@ _Copilot-like autosuggestions generation for zsh._
 
 Extends the [zsh-autosuggestions](https://github.com/zsh-users/zsh-autosuggestions) plugin by adding an LLM-based autosuggestion strategy and natural language command generation within the terminal.
 
+https://github.com/user-attachments/assets/807711b1-5980-4e39-9902-27d7792fe2e2
 
 ## Installation
+
 
 1. Clone project repository to the location of choice:
 
