@@ -1,11 +1,26 @@
 import os
 import sys
 import time
+import logging
 from pathlib import Path
 from datetime import datetime
+from pydantic import BaseModel
 
-import google.generativeai as genai
+import openai
 
+
+class ShellCommandCompletion(BaseModel):
+    command_completion: str
+
+
+# Configure logging
+logging.basicConfig(
+    filename=os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "copilot.log"
+    ),
+    level=logging.ERROR,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -16,23 +31,11 @@ tmp_files_dir_path = Path(TMP_FILES_DIR)
 MIN_IDLE_TIME = 0.3
 CHECK_INTERVAL = 0.1
 
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-model = genai.GenerativeModel("gemini-1.5-flash")
-
-prompt_template = """
-You are command line copilot.
-Use this command line history to better understand the user's expectations:
-{command_history}
-Use this output of the 'ls' commnad to better fit generated completion:
-{ls_output}
-Current working directory: {current_directory}
-Current command line prompt: {current_prompt}
-Propose how current prompt should be completed,
-return completed command line prompt aleone with no explanation.
-"""
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 
 def parse_file(file_path):
+    logging.debug(f"Parsing file: {file_path}")
     with open(file_path, "r") as file:
         lines = file.readlines()
 
@@ -41,12 +44,12 @@ def parse_file(file_path):
     command_history = "".join(lines[3:18])
     ls_output = "".join(lines[18:])
 
-    return prompt_template.format(
-        command_history=command_history,
-        ls_output=ls_output,
-        current_directory=current_directory,
-        current_prompt=current_prompt,
-    )
+    return {
+        "current_prompt": current_prompt,
+        "current_directory": current_directory,
+        "command_history": command_history,
+        "ls_output": ls_output,
+    }
 
 
 def serve_terminal_session(context_file_path, option_file_path):
@@ -57,15 +60,43 @@ def serve_terminal_session(context_file_path, option_file_path):
         context_modification_time >= options_modification_time
         and (time.time() - context_modification_time) > MIN_IDLE_TIME
     ):
-        prompt = parse_file(context_file_path)
+        logging.debug(
+            f"Serving terminal session for context file: {context_file_path}"
+        )
+        context = parse_file(context_file_path)
 
-        if not prompt:
+        if not context:
             return
 
-        chat = model.start_chat(history=[])
-        response = chat.send_message(prompt)
-        completion = response.text.strip()
+        prompt = f"""
+        Current working directory: {context['current_directory']}
+        Current command line prompt: {context['current_prompt']}
+        Command line history: {context['command_history']}
+        Output of 'ls' command: {context['ls_output']}
+        """
 
+        logging.debug(f"Sending prompt to OpenAI API: {prompt}")
+        response = openai.beta.chat.completions.parse(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a command line copilot. Your goal is to provide accurate and context-aware command-line completions and suggestions based on the user's command history and current working directory. You should **ONLY** output the suggested command completion, without any additional comments or explanations, unless explicitly requested",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=100,
+            n=1,
+            stop=None,
+            temperature=0,
+            response_format=ShellCommandCompletion,
+        )
+        completion = response.choices[0].message.parsed.command_completion.strip()
+        logging.debug(f"completion: {completion}")
+
+        logging.debug(
+            f"Writing completion to options file: {option_file_path}"
+        )
         with open(option_file_path, "w") as file:
             file.write(completion)
 
@@ -83,14 +114,17 @@ def handle_tmp_files(directory):
             serve_terminal_session(context_file_path, option_file_path)
         except Exception as e:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            sys.stderr.write(f"{timestamp} \t ERROR: {str(e)}\n")
+            logging.error(
+                f"Error processing file {context_file_path}: {str(e)}",
+                exc_info=True,
+            )
 
 
 def watch_files():
     while True:
         handle_tmp_files(TMP_FILES_DIR)
 
-        # Limit frequency of checking for chenges
+        # Limit frequency of checking for changes
         time.sleep(CHECK_INTERVAL)
 
 
