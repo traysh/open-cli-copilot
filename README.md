@@ -1,6 +1,6 @@
 # open-cli-copilot
 
-_Copilot-like autosuggestions generation for zsh._
+_Copilot-like autosuggestions generation for zsh.
 
 Extends the [zsh-autosuggestions](https://github.com/zsh-users/zsh-autosuggestions) plugin by adding an LLM-based autosuggestion strategy and natural language command generation within the terminal.
 
@@ -24,11 +24,11 @@ https://github.com/user-attachments/assets/807711b1-5980-4e39-9902-27d7792fe2e2
 3. Source main script, and export API-key by adding to ```~/.zshrc``` following lines:
 
     ```sh
-    export GOOGLE_API_KEY=<your_token>
+    export OPENAI_API_KEY=<your_token>
     source ~/path/to/open-cli-copilot/copilot.zsh
     ```
 
-    _You can get your API-key from: https://aistudio.google.com/app/apikey_
+    You can get your API-key from: https://platform.openai.com/account/api-keys
 
 4. Start a new terminal session.
 
